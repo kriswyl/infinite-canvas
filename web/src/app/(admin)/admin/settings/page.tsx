@@ -4,7 +4,7 @@ import { CheckCircleOutlined, DeleteOutlined, FormatPainterOutlined, PlusOutline
 import { json } from "@codemirror/lang-json";
 import { App, Button, Card, Col, Drawer, Flex, Form, Input, InputNumber, Modal, Row, Segmented, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EditorView } from "@uiw/react-codemirror";
 
 import { fetchAdminSettings, fetchChannelModels, saveAdminSettings, testChannelModel, type AdminModelChannel, type AdminSettings } from "@/services/api/admin";
@@ -26,12 +26,14 @@ const jsonEditorTheme = EditorView.theme({
 
 const emptySettings: AdminSettings = {
   public: {
-    availableModels: [],
-    defaultModel: "",
-    defaultImageModel: "",
-    defaultTextModel: "",
-    systemPrompt: "",
-    allowCustomChannel: false,
+    modelChannel: {
+      availableModels: [],
+      defaultModel: "",
+      defaultImageModel: "",
+      defaultTextModel: "",
+      systemPrompt: "",
+      allowCustomChannel: false,
+    },
   },
   private: { channels: [] },
 };
@@ -58,7 +60,9 @@ export default function AdminSettingsPage() {
   const [testResults, setTestResults] = useState<Record<string, { status: "success" | "error"; duration?: string; message: string }>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const models = Form.useWatch(["public", "availableModels"], form) || [];
+  const publicModels = Form.useWatch(["public", "modelChannel", "availableModels"], form) || [];
+  const channelModels = useMemo(() => collectChannelModels(channels), [channels]);
+  const modelOptions = useMemo(() => uniqueModels([...publicModels, ...channelModels]), [publicModels, channelModels]);
   const activeMode = editorMode[activeTab];
   const activeJsonText = jsonText[activeTab];
   const jsonError = activeMode === "json" ? getJsonError(activeJsonText) : "";
@@ -266,12 +270,12 @@ export default function AdminSettingsPage() {
             activeMode === "visual" ? (
               <Form form={form} layout="vertical" initialValues={emptySettings} requiredMark={false}>
                 <Row gutter={16}>
-                  <Col span={24}><Form.Item name={["public", "availableModels"]} label="系统可用模型(请先添加渠道)"><Select mode="tags" tokenSeparators={[",", "\n"]} options={models.map((item) => ({ label: item, value: item }))} /></Form.Item></Col>
-                  <Col xs={24} md={8}><Form.Item name={["public", "defaultModel"]} label="默认模型"><Select showSearch allowClear options={models.map((item) => ({ label: item, value: item }))} /></Form.Item></Col>
-                  <Col xs={24} md={8}><Form.Item name={["public", "defaultImageModel"]} label="默认图片模型"><Select showSearch allowClear options={models.map((item) => ({ label: item, value: item }))} /></Form.Item></Col>
-                  <Col xs={24} md={8}><Form.Item name={["public", "defaultTextModel"]} label="默认文本模型"><Select showSearch allowClear options={models.map((item) => ({ label: item, value: item }))} /></Form.Item></Col>
-                  <Col span={24}><Form.Item name={["public", "systemPrompt"]} label="系统提示词"><Input.TextArea rows={4} /></Form.Item></Col>
-                  <Col span={24}><Form.Item name={["public", "allowCustomChannel"]} label="是否允许用户自定义渠道" extra="开启后，前端可提供走后端渠道和用户自定义 baseUrl 直连两种模式" valuePropName="checked"><Switch /></Form.Item></Col>
+                  <Col span={24}><Form.Item name={["public", "modelChannel", "availableModels"]} label="系统可用模型(请先配置渠道)"><Select mode="tags" tokenSeparators={[",", "\n"]} options={modelOptions.map((item) => ({ label: item, value: item }))} /></Form.Item></Col>
+                  <Col xs={24} md={8}><Form.Item name={["public", "modelChannel", "defaultModel"]} label="默认模型"><Select showSearch allowClear options={publicModels.map((item) => ({ label: item, value: item }))} /></Form.Item></Col>
+                  <Col xs={24} md={8}><Form.Item name={["public", "modelChannel", "defaultImageModel"]} label="默认图片模型"><Select showSearch allowClear options={publicModels.map((item) => ({ label: item, value: item }))} /></Form.Item></Col>
+                  <Col xs={24} md={8}><Form.Item name={["public", "modelChannel", "defaultTextModel"]} label="默认文本模型"><Select showSearch allowClear options={publicModels.map((item) => ({ label: item, value: item }))} /></Form.Item></Col>
+                  <Col span={24}><Form.Item name={["public", "modelChannel", "systemPrompt"]} label="系统提示词"><Input.TextArea rows={4} /></Form.Item></Col>
+                  <Col span={24}><Form.Item name={["public", "modelChannel", "allowCustomChannel"]} label="是否允许用户自定义渠道" extra="开启后，前端可提供走后端渠道和用户自定义 baseUrl 直连两种模式" valuePropName="checked"><Switch /></Form.Item></Col>
                 </Row>
               </Form>
             ) : (
@@ -337,7 +341,7 @@ export default function AdminSettingsPage() {
             </div>
           )}
         </Card>
-        <Drawer title={editingChannelIndex === null ? "新增渠道" : "编辑渠道"} open={isChannelDrawerOpen} width={560} onClose={closeChannelDrawer} extra={<Space><Button onClick={closeChannelDrawer}>取消</Button><Button type="primary" onClick={() => void saveChannel()}>保存</Button></Space>} destroyOnHidden>
+        <Drawer title={editingChannelIndex === null ? "新增渠道" : "编辑渠道"} open={isChannelDrawerOpen} size={560} onClose={closeChannelDrawer} extra={<Space><Button onClick={closeChannelDrawer}>取消</Button><Button type="primary" onClick={() => void saveChannel()}>保存</Button></Space>} destroyOnHidden>
           <Form form={channelForm} layout="vertical" requiredMark={false} initialValues={emptyChannel}>
             <Row gutter={16}>
               <Col span={12}><Form.Item name="name" label="渠道名称" rules={[{ required: true, message: "请输入渠道名称" }]}><Input /></Form.Item></Col>
@@ -415,21 +419,23 @@ export default function AdminSettingsPage() {
 }
 
 function normalizeSettings(settings: Partial<AdminSettings> = {}): AdminSettings {
+  const privateSetting = normalizePrivateSetting(settings.private);
   return {
     public: {
       ...normalizePublicSetting(settings.public),
     },
-    private: {
-      ...normalizePrivateSetting(settings.private),
-    },
+    private: privateSetting,
   };
 }
 
 function normalizePublicSetting(setting: Partial<AdminSettings["public"]> = {}): AdminSettings["public"] {
   return {
     ...emptySettings.public,
-    ...setting,
-    availableModels: setting.availableModels || [],
+    modelChannel: {
+      ...emptySettings.public.modelChannel,
+      ...(setting.modelChannel || {}),
+      availableModels: setting.modelChannel?.availableModels || [],
+    },
   };
 }
 
@@ -450,6 +456,14 @@ function normalizeChannel(item: Partial<AdminModelChannel> = {}): AdminModelChan
     enabled: item.enabled !== false,
     remark: item.remark || "",
   };
+}
+
+function collectChannelModels(channels: AdminModelChannel[]) {
+  return uniqueModels(channels.filter((channel) => channel.enabled).flatMap((channel) => channel.models || []));
+}
+
+function uniqueModels(models: string[]) {
+  return Array.from(new Set(models.filter(Boolean)));
 }
 
 function modelSummary(models: string[]) {

@@ -95,13 +95,17 @@ export type AdminModelChannel = {
   remark: string;
 };
 
-export type AdminPublicSettings = {
+export type AdminPublicModelChannelSettings = {
   availableModels: string[];
   defaultModel: string;
   defaultImageModel: string;
   defaultTextModel: string;
   systemPrompt: string;
   allowCustomChannel: boolean;
+};
+
+export type AdminPublicSettings = {
+  modelChannel: AdminPublicModelChannelSettings;
 };
 
 export type AdminPrivateSettings = {

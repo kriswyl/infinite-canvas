@@ -76,6 +76,7 @@ docker compose -f docker-compose.local.yml up -d --build
 - [画布快捷键](docs/canvas-shortcuts.md)
 - [待办事项](docs/todo.md)
 - [后端数据库说明](docs/backend-database.md)
+- [系统配置数据结构](docs/system-settings.md)
 - [接口响应约定](docs/api-response.md)
 
 ## 社区支持

@@ -30,8 +30,8 @@ func normalizeSettings(settings model.Settings) model.Settings {
 }
 
 func normalizePublicSetting(setting model.PublicSetting) model.PublicSetting {
-	if setting.AvailableModels == nil {
-		setting.AvailableModels = []string{}
+	if setting.ModelChannel.AvailableModels == nil {
+		setting.ModelChannel.AvailableModels = []string{}
 	}
 	return setting
 }

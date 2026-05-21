@@ -32,7 +32,7 @@ export function getAntThemeConfig(dark: boolean): ThemeConfig {
 
   return {
     algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-    cssVar: true,
+    cssVar: { key: dark ? "infinite-canvas-dark" : "infinite-canvas-light" },
     token: {
       colorPrimary: color.primary,
       colorInfo: color.primary,

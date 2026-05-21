@@ -111,6 +111,12 @@
 
 | 字段                | 类型       | 说明             |
 |-------------------|----------|----------------|
+| `modelChannel` | object | 模型渠道公开配置组 |
+
+`modelChannel` 当前字段：
+
+| 字段                | 类型       | 说明             |
+|-------------------|----------|----------------|
 | `availableModels` | string[] | 系统可用模型列表       |
 | `defaultModel`    | string   | 默认模型           |
 | `defaultImageModel` | string | 默认图片模型         |
