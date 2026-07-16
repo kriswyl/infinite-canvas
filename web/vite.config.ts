@@ -12,6 +12,8 @@ const localChangelog = readFileSync(resolve(webDir, "../CHANGELOG.md"), "utf8");
 
 export default defineConfig({
     base: process.env.VITE_BASE || "/",
+    // 容器内开发时开启轮询，让 bind mount 下的 HMR 生效（VITE_DEV_POLLING 由 docker-compose.dev.yml 注入）。
+    server: process.env.VITE_DEV_POLLING ? { watch: { usePolling: true, interval: 300 } } : undefined,
     plugins: [react()],
     resolve: {
         alias: {

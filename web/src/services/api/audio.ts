@@ -54,6 +54,7 @@ function assertAudioConfig(config: AiConfig, model: string) {
     if (!config.baseUrl.trim()) throw new Error("请先配置 Base URL");
     if (!config.apiKey.trim()) throw new Error("请先配置 API Key");
     if (config.apiFormat === "gemini") throw new Error("Gemini 调用格式暂不支持音频生成，请使用 OpenAI 格式渠道");
+    if (config.apiFormat === "kling") throw new Error("Kling 调用格式仅支持视频生成，请使用 OpenAI 格式渠道");
 }
 
 async function assertAudioBlob(blob: Blob) {

@@ -3,13 +3,14 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { nanoid } from "nanoid";
 
-export type ApiCallFormat = "openai" | "gemini";
+export type ApiCallFormat = "openai" | "gemini" | "kling";
 
 export type ModelChannel = {
     id: string;
     name: string;
     baseUrl: string;
     apiKey: string;
+    secretKey: string;
     apiFormat: ApiCallFormat;
     models: string[];
 };
@@ -18,6 +19,7 @@ export type AiConfig = {
     channelMode: "remote" | "local";
     baseUrl: string;
     apiKey: string;
+    secretKey: string;
     apiFormat: ApiCallFormat;
     channels: ModelChannel[];
     model: string;
@@ -31,6 +33,8 @@ export type AiConfig = {
     audioInstructions: string;
     videoSeconds: string;
     vquality: string;
+    klingVersion: string;
+    klingVoice: string;
     videoGenerateAudio: string;
     videoWatermark: string;
     systemPrompt: string;
@@ -59,11 +63,13 @@ export type ModelCapability = "image" | "video" | "text" | "audio";
 const CHANNEL_MODEL_SEPARATOR = "::";
 const OPENAI_BASE_URL = "https://api.openai.com";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
+const KLING_BASE_URL = "https://api.klingai.com";
 
 export const defaultConfig: AiConfig = {
     channelMode: "local",
     baseUrl: OPENAI_BASE_URL,
     apiKey: "",
+    secretKey: "",
     apiFormat: "openai",
     channels: [
         {
@@ -71,6 +77,7 @@ export const defaultConfig: AiConfig = {
             name: "默认渠道",
             baseUrl: OPENAI_BASE_URL,
             apiKey: "",
+            secretKey: "",
             apiFormat: "openai",
             models: ["gpt-image-2", "grok-imagine-video", "gpt-5.5", "gpt-4o-mini-tts"],
         },
@@ -86,6 +93,8 @@ export const defaultConfig: AiConfig = {
     audioInstructions: "",
     videoSeconds: "6",
     vquality: "720",
+    klingVersion: "kling-v1",
+    klingVoice: "false",
     videoGenerateAudio: "true",
     videoWatermark: "false",
     systemPrompt: "",
@@ -224,6 +233,8 @@ export const useConfigStore = create<ConfigStore>()(
                         audioInstructions: config.audioInstructions || "",
                         videoSeconds: config.videoSeconds || "6",
                         vquality: config.vquality || "720",
+                        klingVersion: config.klingVersion || "kling-v1",
+                        klingVoice: config.klingVoice || "false",
                         videoGenerateAudio: config.videoGenerateAudio || "true",
                         videoWatermark: config.videoWatermark || "false",
                         canvasImageCount: config.canvasImageCount || "3",
@@ -257,6 +268,7 @@ export function createModelChannel(channel?: Partial<ModelChannel>): ModelChanne
         name: channel?.name?.trim() || "新渠道",
         baseUrl: channel?.baseUrl?.trim() || defaultBaseUrlForApiFormat(apiFormat),
         apiKey: channel?.apiKey || "",
+        secretKey: channel?.secretKey || "",
         apiFormat,
         models: uniqueRawModels(channel?.models || []),
     };
@@ -307,7 +319,7 @@ export function resolveModelChannel(config: AiConfig, value: string) {
     const decoded = decodeChannelModel(value);
     const model = decoded?.model || value;
     const matched = decoded ? config.channels.find((channel) => channel.id === decoded.channelId) : config.channels.find((channel) => channel.models.includes(model));
-    return matched || config.channels[0] || createModelChannel({ id: "default", name: "默认渠道", baseUrl: config.baseUrl, apiKey: config.apiKey, apiFormat: config.apiFormat, models: config.models.map(modelOptionName) });
+    return matched || config.channels[0] || createModelChannel({ id: "default", name: "默认渠道", baseUrl: config.baseUrl, apiKey: config.apiKey, secretKey: config.secretKey, apiFormat: config.apiFormat, models: config.models.map(modelOptionName) });
 }
 
 export function resolveModelRequestConfig(config: AiConfig, value: string) {
@@ -317,6 +329,7 @@ export function resolveModelRequestConfig(config: AiConfig, value: string) {
         model: modelOptionName(value || config.model),
         baseUrl: channel.baseUrl,
         apiKey: channel.apiKey,
+        secretKey: channel.secretKey,
         apiFormat: channel.apiFormat,
     };
 }
@@ -338,6 +351,7 @@ function normalizeChannels(config: AiConfig) {
                 name: "默认渠道",
                 baseUrl: config.baseUrl || defaultConfig.baseUrl,
                 apiKey: config.apiKey || "",
+                secretKey: config.secretKey || "",
                 apiFormat: config.apiFormat || defaultConfig.apiFormat,
                 models: uniqueRawModels([
                     ...(config.models || []),
@@ -354,11 +368,13 @@ function normalizeChannels(config: AiConfig) {
 }
 
 export function defaultBaseUrlForApiFormat(apiFormat: ApiCallFormat) {
-    return apiFormat === "gemini" ? GEMINI_BASE_URL : OPENAI_BASE_URL;
+    if (apiFormat === "gemini") return GEMINI_BASE_URL;
+    if (apiFormat === "kling") return KLING_BASE_URL;
+    return OPENAI_BASE_URL;
 }
 
 function normalizeApiFormat(apiFormat: unknown): ApiCallFormat {
-    return apiFormat === "gemini" ? "gemini" : "openai";
+    return apiFormat === "gemini" || apiFormat === "kling" ? apiFormat : "openai";
 }
 
 function uniqueRawModels(models: string[]) {

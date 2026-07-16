@@ -2,9 +2,10 @@ import { type ReactNode } from "react";
 import { Switch } from "antd";
 
 import { ImageSettingsTheme } from "@/components/image-settings-panel";
+import { isKlingVideoConfig, klingAudioAvailable, klingCapability, klingHasModeSelector, klingModeOptions, klingRatioOptions, klingVersionOptions, klingVoiceAvailable, normalizeKlingDuration, normalizeKlingMode, normalizeKlingRatio, normalizeKlingVersion } from "@/lib/kling-video";
 import { boolConfig, isSeedanceFastModel, isSeedanceVideoConfig, normalizeSeedanceDuration, normalizeSeedanceRatio, normalizeSeedanceResolution, seedanceDurationOptions, seedancePixelLabel, seedanceRatioOptions, seedanceResolutionOptions } from "@/lib/seedance-video";
 import { type CanvasTheme } from "@/lib/canvas-theme";
-import { modelOptionName, type AiConfig } from "@/stores/use-config-store";
+import { modelMatchesCapability, modelOptionName, resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 
 const resolutionOptions = [
     { value: "720", label: "720p" },
@@ -28,13 +29,18 @@ export const videoSecondOptions = secondOptions.map((value) => String(value));
 
 type VideoSettingsPanelProps = {
     config: AiConfig;
-    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark", value: string) => void;
+    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "klingVersion" | "klingVoice", value: string) => void;
     theme: CanvasTheme;
     showTitle?: boolean;
     className?: string;
 };
 
 export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = true, className = "w-[320px] space-y-4 rounded-2xl px-1 py-0.5" }: VideoSettingsPanelProps) {
+    const selectedModel = modelMatchesCapability(config.model, "video") ? config.model : config.videoModel;
+    const requestConfig = resolveModelRequestConfig(config, selectedModel);
+    if (isKlingVideoConfig(requestConfig)) {
+        return <KlingVideoSettingsPanel config={config} onConfigChange={onConfigChange} theme={theme} showTitle={showTitle} className={className} />;
+    }
     if (isSeedanceVideoConfig(config)) {
         return <SeedanceVideoSettingsPanel config={config} onConfigChange={onConfigChange} theme={theme} showTitle={showTitle} className={className} />;
     }
@@ -101,6 +107,91 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 </SettingGroup>
             </div>
         </ImageSettingsTheme>
+    );
+}
+
+function KlingVideoSettingsPanel({ config, onConfigChange, theme, showTitle, className }: VideoSettingsPanelProps) {
+    const version = normalizeKlingVersion(config.klingVersion);
+    const capability = klingCapability(version);
+    const mode = normalizeKlingMode(config.vquality, version);
+    const ratio = normalizeKlingRatio(config.size);
+    const duration = normalizeKlingDuration(config.videoSeconds, version);
+    const audioOn = boolConfig(config.videoGenerateAudio, true);
+    const voiceOn = boolConfig(config.klingVoice, false);
+    const audioAvailable = klingAudioAvailable(version, mode);
+    const voiceAvailable = klingVoiceAvailable(version, mode, audioAvailable && audioOn);
+
+    return (
+        <ImageSettingsTheme theme={theme}>
+            <div className={className} style={{ color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()}>
+                {showTitle ? <div className="text-lg font-semibold">Kling 视频设置</div> : null}
+                <SettingGroup title="模型版本" color={theme.node.muted}>
+                    <div className="grid grid-cols-2 gap-2.5">
+                        {klingVersionOptions.map((item) => (
+                            <OptionPill key={item.value} selected={version === item.value} theme={theme} onClick={() => onConfigChange("klingVersion", item.value)}>
+                                {item.label}
+                            </OptionPill>
+                        ))}
+                    </div>
+                </SettingGroup>
+                {klingHasModeSelector(version) ? (
+                    <SettingGroup title="生成模式" color={theme.node.muted}>
+                        <div className="grid grid-cols-2 gap-2.5">
+                            {klingModeOptions.map((item) => (
+                                <OptionPill key={item.value} selected={mode === item.value} theme={theme} onClick={() => onConfigChange("vquality", item.value)}>
+                                    {item.label}
+                                </OptionPill>
+                            ))}
+                        </div>
+                    </SettingGroup>
+                ) : null}
+                <SettingGroup title="画面比例" color={theme.node.muted}>
+                    <div className="grid grid-cols-3 gap-2.5">
+                        {klingRatioOptions.map((item) => (
+                            <button key={item.value} type="button" className="flex h-[68px] cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border bg-transparent text-sm transition hover:opacity-80" style={{ borderColor: ratio === item.value ? theme.node.text : theme.node.stroke, color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()} onClick={() => onConfigChange("size", item.value)}>
+                                <SizePreview width={item.width} height={item.height} color={theme.node.text} />
+                                <span>{item.label}</span>
+                                <span className="text-[10px] leading-none opacity-55">{item.value}</span>
+                            </button>
+                        ))}
+                    </div>
+                </SettingGroup>
+                <KlingDurationGroup capability={capability} value={duration} theme={theme} onChange={(value) => onConfigChange("videoSeconds", value)} />
+                {audioAvailable || voiceAvailable ? (
+                    <SettingGroup title="音频" color={theme.node.muted}>
+                        <div className="space-y-2">
+                            {audioAvailable ? <SwitchRow label="生成音频" checked={audioOn} theme={theme} onChange={(checked) => onConfigChange("videoGenerateAudio", String(checked))} /> : null}
+                            {voiceAvailable ? <SwitchRow label="生成音色" checked={voiceOn} theme={theme} onChange={(checked) => onConfigChange("klingVoice", String(checked))} /> : null}
+                        </div>
+                    </SettingGroup>
+                ) : null}
+            </div>
+        </ImageSettingsTheme>
+    );
+}
+
+function KlingDurationGroup({ capability, value, theme, onChange }: { capability: ReturnType<typeof klingCapability>; value: string; theme: CanvasTheme; onChange: (value: string) => void }) {
+    if (capability.duration.type === "range") {
+        const { min, max } = capability.duration;
+        return (
+            <SettingGroup title={`时长（${min}–${max} 秒）`} color={theme.node.muted}>
+                <div className="flex items-center gap-3" onMouseDown={(event) => event.stopPropagation()}>
+                    <input type="range" min={min} max={max} step={1} value={Number(value)} className="h-1 flex-1 cursor-pointer accent-current" onChange={(event) => onChange(event.target.value)} />
+                    <span className="w-10 text-right text-sm tabular-nums">{value}s</span>
+                </div>
+            </SettingGroup>
+        );
+    }
+    return (
+        <SettingGroup title="时长" color={theme.node.muted}>
+            <div className="grid grid-cols-2 gap-2.5">
+                {capability.duration.values.map((seconds) => (
+                    <OptionPill key={seconds} selected={value === String(seconds)} theme={theme} onClick={() => onChange(String(seconds))}>
+                        {seconds}s
+                    </OptionPill>
+                ))}
+            </div>
+        </SettingGroup>
     );
 }
 

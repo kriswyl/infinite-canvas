@@ -36,6 +36,7 @@ const modelGroups: ModelGroup[] = [
 const apiFormatOptions: Array<{ label: string; value: ApiCallFormat }> = [
     { label: "OpenAI", value: "openai" },
     { label: "Gemini", value: "gemini" },
+    { label: "Kling", value: "kling" },
 ];
 
 const webdavDomainKeys: AppSyncDomainKey[] = ["canvas", "assets", "image-workbench", "video-workbench"];
@@ -96,7 +97,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     };
 
     const finishConfig = () => {
-        const ready = config.channels.some((channel) => channel.baseUrl.trim() && channel.apiKey.trim() && channel.models.length);
+        const ready = config.channels.some((channel) => channelReady(channel) && channel.models.length);
         setConfigDialogOpen(false);
         if (!ready) return;
         message.success(shouldPromptContinue ? "配置已保存，请继续刚才的请求" : "配置已保存");
@@ -130,6 +131,10 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     };
 
     const refreshChannelModels = async (channel: ModelChannel) => {
+        if (channel.apiFormat === "kling") {
+            message.info("Kling 不提供通用模型列表接口，请在模型列表中手动输入模型名");
+            return;
+        }
         if (!channel.baseUrl.trim() || !channel.apiKey.trim()) {
             message.error("请先填写该渠道的 Base URL 和 API Key");
             return;
@@ -147,9 +152,9 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
     };
 
     const refreshAllModels = async () => {
-        const runnable = config.channels.filter((channel) => channel.baseUrl.trim() && channel.apiKey.trim());
+        const runnable = config.channels.filter((channel) => channel.apiFormat !== "kling" && channelReady(channel));
         if (!runnable.length) {
-            message.error("请先填写至少一个渠道的 Base URL 和 API Key");
+            message.error("没有可拉取模型的渠道；Kling 模型需要手动输入");
             return;
         }
         setLoadingChannelId("all");
@@ -272,7 +277,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                                     </div>
                                                 </div>
                                                 <div className="flex shrink-0 gap-2">
-                                                    <Button size="small" loading={loadingChannelId === channel.id} onClick={() => void refreshChannelModels(channel)}>
+                                                    <Button size="small" disabled={channel.apiFormat === "kling"} loading={loadingChannelId === channel.id} onClick={() => void refreshChannelModels(channel)}>
                                                         拉取模型
                                                     </Button>
                                                     <Button size="small" danger icon={<Trash2 className="size-3.5" />} onClick={() => deleteChannel(channel.id)} />
@@ -292,7 +297,7 @@ export function AppConfigPanel({ showDoneButton = false, initialTab = "channels"
                                                     <Input.Password value={channel.apiKey} onChange={(event) => updateChannel(channel.id, { apiKey: event.target.value })} />
                                                 </Form.Item>
                                                 <Form.Item label="模型列表" className="mb-0 md:col-span-2">
-                                                    <Select mode="tags" showSearch allowClear maxTagCount="responsive" placeholder="输入模型名，或点击拉取模型" value={channel.models} onChange={(models) => updateChannel(channel.id, { models })} />
+                                                    <Select mode="tags" showSearch allowClear maxTagCount="responsive" placeholder={channel.apiFormat === "kling" ? "输入视频模型名(如 kling)后按回车，版本在视频设置里选" : "输入模型名，或点击拉取模型"} value={channel.models} onChange={(models) => updateChannel(channel.id, { models })} />
                                                 </Form.Item>
                                             </div>
                                         </section>
@@ -533,6 +538,7 @@ function withChannels(config: AiConfig, channels: ModelChannel[]): AiConfig {
         models,
         baseUrl: channels[0]?.baseUrl || config.baseUrl,
         apiKey: channels[0]?.apiKey || config.apiKey,
+        secretKey: channels[0]?.secretKey || config.secretKey,
         apiFormat: channels[0]?.apiFormat || config.apiFormat,
         imageModels,
         videoModels,
@@ -565,7 +571,13 @@ function uniqueModels(models: string[]) {
 }
 
 function apiFormatLabel(apiFormat: ApiCallFormat) {
-    return apiFormat === "gemini" ? "Gemini" : "OpenAI";
+    if (apiFormat === "gemini") return "Gemini";
+    if (apiFormat === "kling") return "Kling";
+    return "OpenAI";
+}
+
+function channelReady(channel: ModelChannel) {
+    return Boolean(channel.baseUrl.trim() && channel.apiKey.trim());
 }
 
 function formatWebdavTime(value: string) {
